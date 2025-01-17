@@ -95,6 +95,7 @@ us to have package-like documentation for all of the functions.
 
 ```{r}
 if (!require('devtools')) install.packages('devtools')
+if (!require('reshape2')) install.packages('reshape2')
 ```
 
 ## Read data
