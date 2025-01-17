@@ -268,3 +268,69 @@ results_df <- results_df %>%
 knitr::kable(results_df)
 ```
 
+```{r}
+fig4_cols <- c("Optimism", "Age", "Gender", "Race", "Education", "Income",
+               "Interval_between_assessments", "Chronic_conditions",
+               "Blood_pressure_medication", "Body_mass_index", "Smoking_status",
+               "Alcohol_consumption", "Prudent_diet", "Regular_exercise",
+               "Negative_affect", "M2ID")
+cor_data_4 <- full_data %>%
+    mutate(Optimism = B1SORIEN,
+           Age = as.numeric(age),
+           Gender = case_when(sex == '(1) Male' ~ 0,
+                              sex == '(2) Female' ~ 1),
+           Race = case_when(race == 'White' ~ 0,
+                            race == 'Nonwhite' ~ 1),
+           Education = education_categorical,
+           Income = household_income,
+           `Interval_between_assessments` = visit_interval,
+           `Chronic_conditions` = case_when(chronic_condition == '(0) No' ~ 0,
+                                            chronic_condition == '(1) Yes' ~ 1),
+           `Blood_pressure_medication` = case_when(blood_pressure_med == '(2) No' | blood_pressure_med == '2' ~ 0,
+                                                   blood_pressure_med == '1' ~ 1),
+           `Body_mass_index` = BMI,
+           `Smoking_status` = case_when(smoking_status == '(1) current smoker' ~ 1,
+                                        smoking_status == '(2) past smoker' ~ 2,
+                                        smoking_status == '(3) never smoker' ~ 3),
+           `Alcohol_consumption` = drinks_per_day,
+           `Prudent_diet` = prudent_diet_score,
+           `Regular_exercise` = case_when(regular_exercise == '(2) No' ~ 0,
+                                          regular_exercise == '(1) Yes' ~ 1),
+           `Negative_affect` = negative_affect) %>%
+    select(all_of(fig4_cols))
+
+#results_df_4 <- data.frame(matrix(ncol = 3, nrow = length(fig4_cols) - 1))
+
+cor_data_4_full <- inner_join(full_data,cor_data_4, by = "M2ID")
+
+```
+
+```{r}
+fig4_cols_full <- c("B4BHDL","B4BTRIGL")
+add_on <- c("","+ Prudent_diet"," + Regular_exercise","+ Smoking_status","+ Alcohol_consumption","+ Body_mass_index")
+HDL_b <- c()
+HDL_SE <- c()
+for (i in 1:length(add_on)){
+  current_model <- lm(paste("B4BHDL ~ Age + Gender + Race + Education + Income + Interval_between_assessments + Optimism", add_on[i]),data=cor_data_4_full)
+  HDL_b[i] <- tail(summary(current_model)$coefficients,n=1)[,"Estimate"]
+  HDL_SE[i] <- tail(summary(current_model)$coefficients,n=1)[,"Std. Error"]
+}
+trig_b <- c()
+trig_SE <- c()
+for (i in 1:length(add_on)){
+  current_model <- lm(paste("B4BTRIGL ~ Age + Gender + Race + Education + Income + Interval_between_assessments + Optimism", add_on[i]),data=cor_data_4_full)
+  trig_b[i] <- tail(summary(current_model)$coefficients,n=1)[,"Estimate"]
+  trig_SE[i] <- tail(summary(current_model)$coefficients,n=1)[,"Std. Error"]
+}
+
+results_df_fig_4 <- data.frame(matrix(ncol = 4, nrow = 6))
+results_df_fig_4$HDL_b <- HDL_b
+results_df_fig_4$HDL_SE <- HDL_SE
+
+results_df_fig_4$Trig_b <- trig_b
+results_df_fig_4$Trig_SE <- trig_SE
+
+results_df_fig_4<-results_df_fig_4[,-(1:4)]
+```
+
+
