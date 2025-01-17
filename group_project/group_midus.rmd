@@ -95,6 +95,7 @@ us to have package-like documentation for all of the functions.
 
 ```{r}
 if (!require('devtools')) install.packages('devtools')
+if (!require('reshape2')) install.packages('reshape2')
 ```
 
 ## Read data
@@ -123,7 +124,9 @@ obtain the 990 individuals they used for the paper analysis.
 ### Step 0. Filter optimism variables
 
 Optimism is assessed using the 6-item Life-Orientation test. In the
-codebook we have found that ...
+codebook we have found that B1SORIEN is the column with the results of the life orientation test. 
+We excluded entries with -1 or non-integer values. 
+We arbitrarily made this choice because we couln't find any indication in the docs.
 
 Here we are filtering the rows to remove the individuals who do not have
 an optimism score.
@@ -132,9 +135,10 @@ an optimism score.
 # filter optimism variables
 source("filter_optimism.R")
 data_after_optimism_filtering <- Filter_optimism(data)
+print(dim(data_after_optimism_filtering))
 ```
 
-We are left with x samples
+We are left with 1046 samples that optimism data.
 
 Secondly, we clean the columns relative to lipids (Total cholesterol,
 HDL, LDL, triglicerydes).
@@ -150,6 +154,15 @@ print(dim(data_after_lipid_filtering))
 
 After filtering lipid measurements, we have 1043 rows left
 
+```{r}
+temp_data <- inner_join(data_after_optimism_filtering,
+                        data_after_lipid_filtering, by = "M2ID")
+
+print(dim(temp_data))
+```
+
+1035 after filtering for both lipids and optimism
+
 ### Step 2 Filter pathway variables
 
 ```{r}
@@ -159,7 +172,22 @@ data_after_pathway_filtering <- filter_pathway(data)
 print(dim(data_after_pathway_filtering))
 ```
 
-We are left with x samples
+We are left with 1048 samples
+
+```{r}
+temp_data <- inner_join(data_after_optimism_filtering,
+                        data_after_lipid_filtering, by = "M2ID") %>%
+              inner_join(data_after_pathway_filtering, by = "M2ID")
+
+print(dim(temp_data))
+```
+
+
+1031 after pathway filtering.
+
+The drinking variable was the hardest one to deal with, because there are multiple
+columns dedicated to it, and also the numbers in there are hard to understand. 
+
 
 ### Step 3 Filter potential confounders
 
@@ -172,7 +200,17 @@ data_after_confounder_filtering = Filter_confounders(data)
 print(dim(data_after_confounder_filtering))
 ```
 
-Here we are left with x individuals
+```{r}
+temp_data <- inner_join(data_after_optimism_filtering,
+                        data_after_lipid_filtering, by = "M2ID") %>%
+              inner_join(data_after_pathway_filtering, by = "M2ID") %>% 
+  inner_join(data_after_confounder_filtering, by = "M2ID")
+
+print(dim(temp_data))
+```
+
+
+Here we are left with 977 individuals
 
 Let's keep only the columns of interest
 
@@ -188,6 +226,10 @@ print(dim(full_data))
 #View(data_after_fc[,all_columns])
 ```
 
+The data seems to be complete, but the documentation or methods section does 
+not give full details on which columns they are using and how they filter them.
+
+
 ## Figure 1
 
 First, we attempt to reproduce Figure 1. Figure 1 shows the frequency
@@ -197,8 +239,9 @@ middle tertile of optimism (23 to 26), and white, highest tertile of
 optimism (27 to 30)
 
 ```{r}
-
 #generate figure 1
+source("figure1.R")
+figure1(full_data) #print histogram
 ```
 
 ## Table 1
@@ -334,3 +377,152 @@ results_df_fig_4<-results_df_fig_4[,-(1:4)]
 ```
 
 
+## Table 3
+
+```{r}
+if (nrow(cor_data) != nrow(full_data)) {
+    stop("nrow(cor_data) != nrow(full_data)")
+}
+
+tab3_data <- cor_data %>%
+    mutate(total_chol = full_data$B4BCHOL,
+           high_ldl = full_data$B4BHDL,
+           low_ldl = full_data$B4BLDL,
+           trigl = log(full_data$B4BTRIGL),
+           optimism_sd = scale(Optimism))
+
+lipid_cols <- c("total_chol", "high_ldl", "low_ldl", "trigl")
+tab3_final_results <- data.frame(matrix(ncol = 6, nrow = 0))
+colnames(tab3_final_results) <- c("Lipid", "Model", "OR", "LB", "UB", "pval")
+for (lipid_col in lipid_cols) {
+    tmp_tab3_data <- tab3_data
+    colnames(tmp_tab3_data)[colnames(tmp_tab3_data) == lipid_col] <- 'outcome'
+    for (model in c("model_1", "model_2")) {
+        if (model == 'model_1') {
+            fit_model <- lm(outcome ~ Age + Gender + Race + Education + Income + 
+                   `Interval between assessments` + optimism_sd,
+                    tmp_tab3_data)
+        } else {
+            fit_model <- lm(outcome ~ Age + Gender + Race + Education + Income + 
+                   `Interval between assessments` + `Chronic conditions` + 
+                      `Blood pressure medication` + optimism_sd,
+                    tmp_tab3_data)
+        }
+        point_estimate <- coef(fit_model)['optimism_sd']
+        conf_int <- confint(fit_model)['optimism_sd',]
+        tab3_final_results <- rbind(tab3_final_results,
+            data.frame(Lipid = lipid_col,
+                       Model = model,
+                       OR = point_estimate,
+                       LB = conf_int[1],
+                       UB = conf_int[2],
+                       pval = coef(summary(fit_model))['optimism_sd','Pr(>|t|)']))
+    }
+}
+
+tab3_final_results <- tab3_final_results %>%
+    mutate(presented_name = paste0(round(OR, 2), 
+                                   case_when(pval < 0.05 ~ '‖',
+                                             pval < 0.10 ~ '§',
+                                             TRUE ~ ''),
+                                   " (", round(LB, 2), "-", round(UB, 2), ")"))
+
+tab3_out <- reshape2::dcast(tab3_final_results, Lipid ~ Model, value.var = 'presented_name')
+tab3_out <- tab3_out %>%
+    mutate(Lipids = case_when(Lipid == 'high_ldl' ~ 'High-density lipoprotein cholesterol',
+                             Lipid == 'low_ldl' ~ 'Low-density lipoprotein cholesterol',
+                             Lipid == 'total_chol' ~ 'Total cholesterol',
+                             Lipid == 'trigl' ~ 'Triglycerides')) %>%
+    rename(`Model 1` = model_1,
+           `Model 2` = model_2) %>%
+    arrange(factor(Lipid, levels = c('Total cholesterol', 
+                                     'High-density lipoprotein cholesterol',
+                                     'Low-density lipoprotein cholesterol',
+                                     'Triglycerides'))) %>%
+    select(Lipids, `Model 1`, `Model 2`)
+
+knitr::kable(tab3_out)
+```
+
+## Table 5
+
+```{r}
+if (nrow(cor_data) != nrow(full_data)) {
+    stop("nrow(cor_data) != nrow(full_data)")
+}
+
+tab5_data <- cor_data %>%
+    mutate(total_chol_binary = full_data$B4BCHOL >= 240,
+           high_ldl_binary = cor_data$Gender == 0 & full_data$B4BHDL < 40 | 
+               cor_data$Gender == 1 & full_data$B4BHDL < 50,
+           low_ldl_binary = full_data$B4BLDL >= 160,
+           trigl_binary = full_data$B4BTRIGL >= 200,
+           optimism_sd = scale(Optimism))
+
+lipid_cols <- c("total_chol_binary", "high_ldl_binary", "low_ldl_binary", "trigl_binary")
+tab5_final_results <- data.frame(matrix(ncol = 6, nrow = 0))
+colnames(tab5_final_results) <- c("Lipid", "Model", "OR", "LB", "UB", "pval")
+for (lipid_col in lipid_cols) {
+    tmp_tab5_data <- tab5_data
+    colnames(tmp_tab5_data)[colnames(tmp_tab5_data) == lipid_col] <- 'outcome'
+    for (model in c("model_1", "model_2")) {
+        if (model == 'model_1') {
+            fit_model <- glm(outcome ~ Age + Gender + Race + Education + Income + 
+                   `Interval between assessments` + optimism_sd,
+                    tmp_tab5_data, family = 'binomial')
+        } else {
+            fit_model <- glm(outcome ~ Age + Gender + Race + Education + Income + 
+                   `Interval between assessments` + `Chronic conditions` + 
+                      `Blood pressure medication` + optimism_sd,
+                    tmp_tab5_data, family = 'binomial')
+        }
+        point_estimate <- exp(coef(fit_model))['optimism_sd']
+        conf_int <- exp(confint(fit_model))['optimism_sd',]
+        tab5_final_results <- rbind(tab5_final_results,
+            data.frame(Lipid = lipid_col,
+                       Model = model,
+                       OR = point_estimate,
+                       LB = conf_int[1],
+                       UB = conf_int[2],
+                       pval = coef(summary(fit_model))['optimism_sd','Pr(>|z|)']))
+    }
+}
+
+tab5_final_results <- tab5_final_results %>%
+    mutate(presented_name = paste0(round(OR, 2), 
+                                   case_when(pval < 0.05 ~ '‖',
+                                             pval < 0.10 ~ '§',
+                                             TRUE ~ ''),
+                                   " (", round(LB, 2), "-", round(UB, 2), ")"))
+
+tab5_out <- reshape2::dcast(tab5_final_results, Lipid ~ Model, value.var = 'presented_name')
+tab5_out <- tab5_out %>%
+    mutate(Lipids = case_when(Lipid == 'high_ldl_binary' ~ 'High-density lipoprotein cholesterol',
+                             Lipid == 'low_ldl_binary' ~ 'Low-density lipoprotein cholesterol',
+                             Lipid == 'total_chol_binary' ~ 'Total cholesterol',
+                             Lipid == 'trigl_binary' ~ 'Triglycerides')) %>%
+    rename(`Model 1` = model_1,
+           `Model 2` = model_2) %>%
+    arrange(factor(Lipid, levels = c('Total cholesterol', 
+                                     'High-density lipoprotein cholesterol',
+                                     'Low-density lipoprotein cholesterol',
+                                     'Triglycerides'))) %>%
+    select(Lipids, `Model 1`, `Model 2`)
+
+knitr::kable(tab5_out)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+>>>>>>> 87a4d54c9dcb88b0c2d617624cc829edc1340d7f

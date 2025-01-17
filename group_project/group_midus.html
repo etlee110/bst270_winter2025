@@ -505,6 +505,200 @@ optimism (27 to 30)</p>
 different chunks, based on the lipid/confounder/pathway groups.</p>
 <pre class="r"><code># generate table 1</code></pre>
 </div>
+<div id="table-2" class="section level2">
+<h2>Table 2</h2>
+<p>We then proceed to reproduce table 2. They don’t specify how the
+correlations and p-values are calculated, so we’ll assume Spearman
+correlation and HC3 standard errors</p>
+<pre class="r"><code>fig2_cols &lt;- c(&quot;Optimism&quot;, &quot;Age&quot;, &quot;Gender&quot;, &quot;Race&quot;, &quot;Education&quot;, &quot;Income&quot;,
+               &quot;Interval between assessments&quot;, &quot;Chronic conditions&quot;,
+               &quot;Blood pressure medication&quot;, &quot;Body mass index&quot;, &quot;Smoking status&quot;,
+               &quot;Alcohol consumption&quot;, &quot;Prudent diet&quot;, &quot;Regular exercise&quot;,
+               &quot;Negative affect&quot;)
+cor_data &lt;- full_data %&gt;%
+    mutate(Optimism = B1SORIEN,
+           Age = as.numeric(age),
+           Gender = case_when(sex == &#39;(1) Male&#39; ~ 0,
+                              sex == &#39;(2) Female&#39; ~ 1),
+           Race = case_when(race == &#39;White&#39; ~ 0,
+                            race == &#39;Nonwhite&#39; ~ 1),
+           Education = education_categorical,
+           Income = household_income,
+           `Interval between assessments` = visit_interval,
+           `Chronic conditions` = case_when(chronic_condition == &#39;(0) No&#39; ~ 0,
+                                            chronic_condition == &#39;(1) Yes&#39; ~ 1),
+           `Blood pressure medication` = case_when(blood_pressure_med == &#39;(2) No&#39; | blood_pressure_med == &#39;2&#39; ~ 0,
+                                                   blood_pressure_med == &#39;1&#39; ~ 1),
+           `Body mass index` = BMI,
+           `Smoking status` = case_when(smoking_status == &#39;(1) current smoker&#39; ~ 1,
+                                        smoking_status == &#39;(2) past smoker&#39; ~ 2,
+                                        smoking_status == &#39;(3) never smoker&#39; ~ 3),
+           `Alcohol consumption` = drinks_per_day,
+           `Prudent diet` = prudent_diet_score,
+           `Regular exercise` = case_when(regular_exercise == &#39;(2) No&#39; ~ 0,
+                                          regular_exercise == &#39;(1) Yes&#39; ~ 1),
+           `Negative affect` = negative_affect) %&gt;%
+    select(all_of(fig2_cols))
+
+results_df &lt;- data.frame(matrix(ncol = 3, nrow = length(fig2_cols) - 1))
+colnames(results_df) &lt;- c(&quot;Characteristic&quot;, &quot;r&quot;, &quot;p&quot;)
+for (i in seq(fig2_cols[-1])) {
+    colname &lt;- fig2_cols[-1][i]
+    cor_val &lt;- c(cor(cor_data[colname], cor_data$Optimism, method = &#39;pearson&#39;))
+    lm_model &lt;- lm(cor_data$Optimism ~ unlist(cor_data[colname]))
+    pval &lt;- coef(summary(lm_model))[2, &#39;Pr(&gt;|t|)&#39;]
+    results_df$Characteristic[i] &lt;- colname
+    results_df$r[i] &lt;- cor_val
+    results_df$p[i] &lt;- pval
+}
+
+results_df &lt;- results_df %&gt;%
+    mutate(r = round(r, 2),
+           p = case_when(p &lt; 0.0001 ~ &quot;&lt;0.0001&quot;,
+                            p &lt; 0.001 ~ &quot;&lt;0.001&quot;,
+                            TRUE ~ as.character(round(p, 2))))
+
+knitr::kable(results_df)</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Characteristic</th>
+<th align="right">r</th>
+<th align="left">p</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Age</td>
+<td align="right">0.20</td>
+<td align="left">&lt;0.0001</td>
+</tr>
+<tr class="even">
+<td align="left">Gender</td>
+<td align="right">0.01</td>
+<td align="left">0.65</td>
+</tr>
+<tr class="odd">
+<td align="left">Race</td>
+<td align="right">-0.05</td>
+<td align="left">0.11</td>
+</tr>
+<tr class="even">
+<td align="left">Education</td>
+<td align="right">0.15</td>
+<td align="left">&lt;0.0001</td>
+</tr>
+<tr class="odd">
+<td align="left">Income</td>
+<td align="right">0.11</td>
+<td align="left">&lt;0.001</td>
+</tr>
+<tr class="even">
+<td align="left">Interval between assessments</td>
+<td align="right">0.00</td>
+<td align="left">0.95</td>
+</tr>
+<tr class="odd">
+<td align="left">Chronic conditions</td>
+<td align="right">-0.13</td>
+<td align="left">&lt;0.0001</td>
+</tr>
+<tr class="even">
+<td align="left">Blood pressure medication</td>
+<td align="right">0.05</td>
+<td align="left">0.12</td>
+</tr>
+<tr class="odd">
+<td align="left">Body mass index</td>
+<td align="right">-0.07</td>
+<td align="left">0.02</td>
+</tr>
+<tr class="even">
+<td align="left">Smoking status</td>
+<td align="right">0.14</td>
+<td align="left">&lt;0.0001</td>
+</tr>
+<tr class="odd">
+<td align="left">Alcohol consumption</td>
+<td align="right">-0.03</td>
+<td align="left">0.3</td>
+</tr>
+<tr class="even">
+<td align="left">Prudent diet</td>
+<td align="right">0.21</td>
+<td align="left">&lt;0.0001</td>
+</tr>
+<tr class="odd">
+<td align="left">Regular exercise</td>
+<td align="right">0.07</td>
+<td align="left">0.04</td>
+</tr>
+<tr class="even">
+<td align="left">Negative affect</td>
+<td align="right">-0.45</td>
+<td align="left">&lt;0.0001</td>
+</tr>
+</tbody>
+</table>
+<pre class="r"><code>fig4_cols &lt;- c(&quot;Optimism&quot;, &quot;Age&quot;, &quot;Gender&quot;, &quot;Race&quot;, &quot;Education&quot;, &quot;Income&quot;,
+               &quot;Interval_between_assessments&quot;, &quot;Chronic_conditions&quot;,
+               &quot;Blood_pressure_medication&quot;, &quot;Body_mass_index&quot;, &quot;Smoking_status&quot;,
+               &quot;Alcohol_consumption&quot;, &quot;Prudent_diet&quot;, &quot;Regular_exercise&quot;,
+               &quot;Negative_affect&quot;, &quot;M2ID&quot;)
+cor_data_4 &lt;- full_data %&gt;%
+    mutate(Optimism = B1SORIEN,
+           Age = as.numeric(age),
+           Gender = case_when(sex == &#39;(1) Male&#39; ~ 0,
+                              sex == &#39;(2) Female&#39; ~ 1),
+           Race = case_when(race == &#39;White&#39; ~ 0,
+                            race == &#39;Nonwhite&#39; ~ 1),
+           Education = education_categorical,
+           Income = household_income,
+           `Interval_between_assessments` = visit_interval,
+           `Chronic_conditions` = case_when(chronic_condition == &#39;(0) No&#39; ~ 0,
+                                            chronic_condition == &#39;(1) Yes&#39; ~ 1),
+           `Blood_pressure_medication` = case_when(blood_pressure_med == &#39;(2) No&#39; | blood_pressure_med == &#39;2&#39; ~ 0,
+                                                   blood_pressure_med == &#39;1&#39; ~ 1),
+           `Body_mass_index` = BMI,
+           `Smoking_status` = case_when(smoking_status == &#39;(1) current smoker&#39; ~ 1,
+                                        smoking_status == &#39;(2) past smoker&#39; ~ 2,
+                                        smoking_status == &#39;(3) never smoker&#39; ~ 3),
+           `Alcohol_consumption` = drinks_per_day,
+           `Prudent_diet` = prudent_diet_score,
+           `Regular_exercise` = case_when(regular_exercise == &#39;(2) No&#39; ~ 0,
+                                          regular_exercise == &#39;(1) Yes&#39; ~ 1),
+           `Negative_affect` = negative_affect) %&gt;%
+    select(all_of(fig4_cols))
+
+#results_df_4 &lt;- data.frame(matrix(ncol = 3, nrow = length(fig4_cols) - 1))
+
+cor_data_4_full &lt;- inner_join(full_data,cor_data_4, by = &quot;M2ID&quot;)</code></pre>
+<pre class="r"><code>fig4_cols_full &lt;- c(&quot;B4BHDL&quot;,&quot;B4BTRIGL&quot;)
+add_on &lt;- c(&quot;&quot;,&quot;+ Prudent_diet&quot;,&quot; + Regular_exercise&quot;,&quot;+ Smoking_status&quot;,&quot;+ Alcohol_consumption&quot;,&quot;+ Body_mass_index&quot;)
+HDL_b &lt;- c()
+HDL_SE &lt;- c()
+for (i in 1:length(add_on)){
+  current_model &lt;- lm(paste(&quot;B4BHDL ~ Age + Gender + Race + Education + Income + Interval_between_assessments + Optimism&quot;, add_on[i]),data=cor_data_4_full)
+  HDL_b[i] &lt;- tail(summary(current_model)$coefficients,n=1)[,&quot;Estimate&quot;]
+  HDL_SE[i] &lt;- tail(summary(current_model)$coefficients,n=1)[,&quot;Std. Error&quot;]
+}
+trig_b &lt;- c()
+trig_SE &lt;- c()
+for (i in 1:length(add_on)){
+  current_model &lt;- lm(paste(&quot;B4BTRIGL ~ Age + Gender + Race + Education + Income + Interval_between_assessments + Optimism&quot;, add_on[i]),data=cor_data_4_full)
+  trig_b[i] &lt;- tail(summary(current_model)$coefficients,n=1)[,&quot;Estimate&quot;]
+  trig_SE[i] &lt;- tail(summary(current_model)$coefficients,n=1)[,&quot;Std. Error&quot;]
+}
+
+results_df_fig_4 &lt;- data.frame(matrix(ncol = 4, nrow = 6))
+results_df_fig_4$HDL_b &lt;- HDL_b
+results_df_fig_4$HDL_SE &lt;- HDL_SE
+
+results_df_fig_4$Trig_b &lt;- trig_b
+results_df_fig_4$Trig_SE &lt;- trig_SE
+
+results_df_fig_4&lt;-results_df_fig_4[,-(1:4)]</code></pre>
+</div>
 </div>
 
 
